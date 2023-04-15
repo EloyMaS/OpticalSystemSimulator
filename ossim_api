@@ -1,0 +1,162 @@
+import numpy as np
+
+
+class OpticalSystem:
+    '''This class contains methods that modify the characteristics of the optical system
+    '''
+
+    # constructor method
+    def __init__(self, refraction_index):
+        # initialize instance variables
+        self.S = np.array([[1, 0],
+                           [0, 1]]) # identity matrix
+        self.element_details = [] # empty list for storing element details
+        self.diaphragm_details = [] # empty list for storing diaphragm details
+
+        try:
+            self.n = refraction_index # store refractive index in instance variable
+
+        except Exception as e:
+            print(e)
+
+    # method for adding a thin lens
+    def add_thin_lens(self, lens_pos, lens_diameter, f_img):
+        try:
+            # calculate 2x2 matrix representing effect of lens on system
+            S = np.array([[1, 0],
+                          [-1 / f_img, 1]])
+
+            # pass element details to helper method for appending to element_details list
+            self._append_element_details(lens_diameter, lens_pos, S, 'thin_lens')
+
+        # handle any exceptions
+        except Exception as e:
+            print(e)
+
+    # method for adding a thick lens
+    def add_thick_lens(self, v_position, R1, R2, lens_thickness, internal_refraction, _diameter):
+        try:
+            # calculate refractive index relation
+            n_relation = self.n/internal_refraction
+
+            # calculate matrix representing effect of first surface of lens on system
+            if R1 == 'plano':
+                mR1 = np.array([[1, 0],
+                                [0, internal_refraction / self.n]])
+
+            elif type(R1) == float:
+                mR1 = np.array([[1, 0],
+                                [(self.n - internal_refraction) / (R1 * internal_refraction), n_relation]])
+
+            else:
+                raise ValueError('Invalid entry for R1')
+
+            # calculate matrix representing thickness of lens
+            mT = np.array([[1, lens_thickness],
+                           [0, 1]])
+
+            # calculate matrix representing effect of second surface of lens on system
+            if R2 == 'plano':
+                mR2 = np.array([[1, 0],
+                                [0, 1 / n_relation]])
+
+            elif type(R1) == float:
+                mR2 = np.array([[1, 0],
+                                [-(self.n - internal_refraction) / (R2 * self.n), 1/n_relation]])
+
+            else:
+                raise ValueError('EntryError: Invalid entry for R1')
+
+            # multiply matrices together to get total matrix for lens
+            matrix = np.matmul(mT, mR1)
+            matrix = np.matmul(mR2, matrix)
+
+            # pass element details to helper method for appending to element_details list
+            self._append_element_details(_diameter, v_position, matrix, 'thick_lens')
+
+        # handle any exceptions
+        except Exception as e:
+            print(e)
+
+    # method for adding a flat mirror
+    def add_flat_mirror(self, _diameter, mirror_position):
+        try:
+            # calculate 2x2 matrix representing effect of mirror on system
+            R = np.array([[1, 0],
+                          [0, -1]])
+
+            # pass element details to helper method for appending to element_details list
+            self._append_element_details(_diameter, mirror_position, R, 'flat_mirror')
+
+        # handle any exceptions
+        except Exception as e:
+            print(e)
+
+    # method for adding a spherical mirror
+    def add_spherical_mirror(self, sphere_radius, mirror_position, mirror_diameter):
+        try:
+            # define the transformation matrix
+            R = np.array([[1, 0],
+                          [2 / sphere_radius, -1]])
+
+            self._append_element_details(mirror_diameter, mirror_position, R, 'spherical_mirror')
+
+        # handle any exceptions
+        except Exception as e:
+            print(e)
+
+    def add_diaphragm(self, diaphragm_diameter, diaphragm_position):
+        try:
+            matrix = np.array([[1, 0],
+                               [0, 1]])
+            self._append_element_details(diaphragm_diameter, diaphragm_position, matrix, 'diaphragm')
+
+        except Exception as e:
+            print(e)
+
+    def _append_element_details(self, _d, _x, matrix, element_type):
+        detail_dict = dict()
+        detail_dict['diameter'], detail_dict['position'] = _d, _x
+        detail_dict['matrix'], detail_dict['type'] = matrix, element_type
+        self.element_details.append(detail_dict)
+
+    def _sort(self, element):
+        return element['position']
+
+
+class Projection(OpticalSystem):
+    '''This class contains the ray_trace method that models the behavior of a ray that enters the systems with a height
+    _h and an incidence angle _sigma
+    '''
+
+    def __init__(self, refraction_index):
+        super(Projection, self).__init__(refraction_index)
+
+    def ray_trace(self, _h, _sigma):
+        self.h = _h
+        self.sigma = _sigma
+        vector = np.array([_h, _sigma])
+        self.element_details.sort(key=self._sort)
+
+        if self.element_details:
+
+            for i, element in enumerate(self.element_details):
+                if element['type'] == 'diaphragm':
+
+                    if element['diameter'] / 2 <= abs(vector[0]):
+                        return 'El rayo se detiene en el diafragma con posición ' \
+                               f'''{element['position']}'''
+
+                else:
+
+                    if (element['diameter'] / 2 >= vector[0]) and (-element['diameter'] / 2 <= vector[0]):
+                        vector = element['matrix'] @ vector
+
+                if i < len(self.element_details) - 1:
+                    distance = self.element_details[i + 1]['position'] - element['position']
+                    vector = np.array([[1, -distance], [0, 1]]) @ vector
+
+            return vector
+
+        else:
+            raise ValueError('El sistema no contiene elementos')
